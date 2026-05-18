@@ -653,15 +653,18 @@ function initBackToTop() {
 
     if (!backToTop) return;
 
+    
+    backToTop.style.display = 'none';
+
     window.addEventListener('scroll', () => {
-        backToTop.style.display = window.scrollY > 300 ? 'block' : 'none';
+        backToTop.style.display =
+            window.scrollY > 700 ? 'block' : 'none';
     });
 
     backToTop.addEventListener('click', () => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     });
 }
-
 // ── Init ────────────────────────────────────────────────────────────
 async function init() {
     bindEvents();
@@ -675,5 +678,4 @@ async function init() {
     initAuth().catch((e) => console.warn('Auth error:', e));
     checkStatus().catch((e) => console.warn('Status error:', e));
 }
-
 document.addEventListener('DOMContentLoaded', init);
