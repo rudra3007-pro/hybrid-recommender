@@ -262,7 +262,7 @@ async function handleSearch(query) {
     state.searchTimer = setTimeout(async () => {
         try {
             const data = await API.get(`/api/search?q=${encodeURIComponent(query)}&limit=8`);
-            state.searchResults = data.results || [];
+            state.searchResults = data.items || [];
             state.selectedSearchIdx = -1;
             renderSearchDropdown(state.searchResults, query);
         } catch {
@@ -461,20 +461,31 @@ async function loadRecommendations(title) {
         }
 
         els.recsStrip.innerHTML = recs.map((r) => `
-            <div class="rec-card" data-title="${r.title}">
-                <div class="rec-card__title">${r.title}</div>
-                <div class="rec-card__rating">
-                    <div class="star-rating">${renderStars(r.rating || 0)}</div>
-                    <span class="rating-value">${(r.rating || 0).toFixed(1)}</span>
-                </div>
-                <div class="rec-card__score">
-                    Score: ${(r.hybrid_score || 0).toFixed(3)}
-                    · Content: ${(r.content_score || 0).toFixed(2)}
-                    · Collab: ${(r.collab_score || 0).toFixed(2)}
-                </div>
-            </div>
-        `).join('');
+    <div class="rec-card" data-title="${r.title}">
+        <div class="rec-card__title">${r.title}</div>
 
+        <div class="rec-card__rating">
+            <div class="star-rating">${renderStars(r.rating || 0)}</div>
+            <span class="rating-value">${(r.rating || 0).toFixed(1)}</span>
+        </div>
+
+        <div class="rec-card__score">
+            Score: ${(r.hybrid_score || 0).toFixed(3)}
+            · Content: ${(r.content_score || 0).toFixed(2)}
+            · Collab: ${(r.collab_score || 0).toFixed(2)}
+        </div>
+
+        <div class="feedback-buttons" style="margin-top:10px; display:flex; gap:10px;">
+            <button onclick="sendFeedback('${r.title}', 'up', this)">
+                👍
+            </button>
+
+            <button onclick="sendFeedback('${r.title}', 'down', this)">
+                👎
+            </button>
+        </div>
+    </div>
+`).join('');
         // Click to chain recommendations
         els.recsStrip.querySelectorAll('.rec-card').forEach((card) => {
             card.addEventListener('click', () => {
@@ -654,3 +665,43 @@ async function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+async function sendFeedback(item, feedback, button) {
+
+    const storageKey = `feedback_${item}`;
+
+    if (sessionStorage.getItem(storageKey)) {
+        return;
+    }
+
+    try {
+
+        const response = await fetch('/api/feedback', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                user_id: 'demo_user',
+                item: item,
+                feedback: feedback
+            })
+        });
+
+        if (response.ok) {
+
+            sessionStorage.setItem(storageKey, 'true');
+
+            const parent = button.parentElement;
+
+            parent.querySelectorAll('button').forEach(btn => {
+                btn.disabled = true;
+            });
+
+            toast('Thanks for your feedback!', 'success');
+        }
+
+    } catch (error) {
+        console.error(error);
+        toast('Feedback failed', 'error');
+    }
+}
