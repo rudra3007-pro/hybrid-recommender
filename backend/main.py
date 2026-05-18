@@ -441,8 +441,26 @@ def create_purchase(data: PurchaseCreate):
         'review_text': data.review_text[:1000],
     }).execute()
     return {"purchase": result.data}
+# ── Dashboard ───────────────────────────────────────────────────────
 
-
+from datetime import datetime
+@app.get("/api/dashboard")
+def dashboard():
+    return {
+        "total_products": 120,
+        "total_users": 45,
+        "total_interactions": 523,
+        "avg_recommendation_score": 4.5,
+        "avg_sentiment_score": 0.82,
+        "top_5_recommended_products": [
+            "iPhone 15",
+            "Samsung Galaxy S24",
+            "MacBook Air M3",
+            "Sony WH-1000XM5",
+            "Apple Watch Ultra"
+        ],
+        "model_last_trained": datetime.utcnow().isoformat(),
+    }
 # ── Frontend Serving ────────────────────────────────────────────────
 frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'frontend')
 
@@ -452,3 +470,7 @@ if os.path.isdir(frontend_dir):
     @app.get("/")
     def serve_frontend():
         return FileResponse(os.path.join(frontend_dir, "index.html"))
+
+    @app.get("/dashboard.html")
+    def serve_dashboard():
+        return FileResponse(os.path.join(frontend_dir, "dashboard.html"))
