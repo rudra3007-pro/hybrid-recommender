@@ -7,8 +7,9 @@ import sys
 import io
 import time
 import logging
-from collections import Counter
-from datetime import datetime, timezone
+import math
+from collections import deque
+from threading import Lock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -25,7 +26,7 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from typing import Any, Optional
 from dotenv import load_dotenv
@@ -43,8 +44,8 @@ from data_adapter import adapt_data, read_file
 from nlp_engine import batch_analyze, aggregate_sentiment_by_item
 from content_model import ContentRecommender
 from collaborative_model import CollaborativeRecommender
-from hybrid_model import HybridRecommender, bayesian_rating
-from llm_explainer import get_explainer
+from hybrid_model import HybridRecommender
+from ab_testing import DEFAULT_EXPERIMENT_ID, run_recommendation_experiment
 
 # ── App ──────────────────────────────────────────────────────────────
 app = FastAPI(title="Hybrid Recommender API", version="3.0")
@@ -104,32 +105,98 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization"],
 )
 
+# ── Response Time Monitoring ────────────────────────────────────────
+SLOW_RESPONSE_THRESHOLD_MS = 500.0
+METRICS_SAMPLE_SIZE = 1000
+response_time_samples = deque(maxlen=METRICS_SAMPLE_SIZE)
+response_metrics = {
+    "total_requests": 0,
+    "error_requests": 0,
+}
+response_metrics_lock = Lock()
+
+
+def _percentile(values, percentile):
+    if not values:
+        return 0.0
+
+    sorted_values = sorted(values)
+    index = math.ceil((percentile / 100) * len(sorted_values)) - 1
+    index = max(0, min(index, len(sorted_values) - 1))
+    return sorted_values[index]
+
+
+def record_response_metric(endpoint, method, status_code, response_time_ms):
+    with response_metrics_lock:
+        response_metrics["total_requests"] += 1
+        if status_code >= 400:
+            response_metrics["error_requests"] += 1
+        response_time_samples.append(response_time_ms)
+
+    log_level = (
+        logging.WARNING
+        if response_time_ms > SLOW_RESPONSE_THRESHOLD_MS
+        else logging.INFO
+    )
+    logger.log(
+        log_level,
+        "API request endpoint=%s method=%s status_code=%s response_time_ms=%.2f",
+        endpoint,
+        method,
+        status_code,
+        response_time_ms,
+    )
+
+
+def get_response_metrics_snapshot():
+    with response_metrics_lock:
+        samples = list(response_time_samples)
+        total_requests = response_metrics["total_requests"]
+        error_requests = response_metrics["error_requests"]
+
+    avg_response_time = sum(samples) / len(samples) if samples else 0.0
+    error_rate = (
+        (error_requests / total_requests) * 100
+        if total_requests
+        else 0.0
+    )
+
+    return {
+        "avg_response_time": round(avg_response_time, 2),
+        "p95_response_time": round(_percentile(samples, 95), 2),
+        "total_requests": total_requests,
+        "error_rate": round(error_rate, 2),
+    }
+
+
+def reset_response_metrics():
+    with response_metrics_lock:
+        response_time_samples.clear()
+        response_metrics["total_requests"] = 0
+        response_metrics["error_requests"] = 0
+
 
 @app.middleware("http")
-async def response_time_middleware(request: Request, call_next):
-    """Attach response duration headers and log every API request."""
-    started_at = time.perf_counter()
+async def response_time_middleware(request, call_next):
+    start_time = time.perf_counter()
     response = None
+    status_code = 500
 
     try:
         response = await call_next(request)
+        status_code = response.status_code
         return response
     finally:
-        duration_ms = (time.perf_counter() - started_at) * 1000
-        status_code = response.status_code if response is not None else 500
-
+        response_time_ms = (time.perf_counter() - start_time) * 1000
         if response is not None:
-            response.headers[RESPONSE_TIME_HEADER] = f"{duration_ms:.2f}"
-
-        log_fn = logger.warning if duration_ms >= _get_slow_response_threshold_ms() else logger.info
-        log_fn(
-            "request_completed",
-            extra={
-                "method": request.method,
-                "path": request.url.path,
-                "status_code": status_code,
-                "duration_ms": round(duration_ms, 2),
-            },
+            response.headers["X-Response-Time"] = (
+                f"{response_time_ms:.2f}ms"
+            )
+        record_response_metric(
+            request.url.path,
+            request.method,
+            status_code,
+            response_time_ms,
         )
 
 # ── State ────────────────────────────────────────────────────────────
@@ -196,6 +263,13 @@ class RealtimeRecommendationHub:
 
 
 realtime_hub = RealtimeRecommendationHub()
+
+
+# ── API Metrics ─────────────────────────────────────────────────────
+
+@app.get("/api/metrics")
+def get_api_metrics():
+    return get_response_metrics_snapshot()
 
 
 # ── Config (for frontend — serves only public keys) ─────────────────
@@ -727,6 +801,9 @@ def explain_recommendation(item: str, user: str):
             "bayesian": round(bayesian_score, 4)
         }
     }
+    if experiment:
+        response["experiment"] = experiment
+    return response
 
 
 @app.websocket("/ws/recommendations")
