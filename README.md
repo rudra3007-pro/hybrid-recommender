@@ -240,6 +240,9 @@ NDCG@K       —  ranking quality (discounted cumulative gain)
 MIT — see [`LICENSE`](LICENSE)
 
 ---
+## Documentation
+
+- [CHANGELOG](CHANGELOG.md)
 
 <div align="center">
 
