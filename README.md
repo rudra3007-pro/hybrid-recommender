@@ -515,6 +515,30 @@ National Finalist · Smart India Hackathon 2025 · Top 8% of 950+ Teams
 [![GitHub](https://img.shields.io/badge/Follow-GitHub-181717?style=flat-square&logo=github&logoColor=white)](https://github.com/leonagoel)
 [![Email](https://img.shields.io/badge/Email-leona.goel123%40gmail.com-EA4335?style=flat-square&logo=gmail&logoColor=white)](mailto:leona.goel123@gmail.com)
 
+## Contributors
+
+Thanks to all the amazing people who contribute to this project ❤️
+
+### Contributor Grid
+
+<a href="https://github.com/leonagoel/hybrid-recommender/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=leonagoel/hybrid-recommender" />
+</a>
+
+---
+
+### Top Contributors
+
+| Contributor | PRs Merged | Joined |
+|-------------|------------|---------|
+| @username1 | 15 | Jan 2026 |
+| @username2 | 12 | Feb 2026 |
+| @username3 | 10 | Mar 2026 |
+| @username4 | 8 | Apr 2026 |
+| @username5 | 6 | May 2026 |
+
+> This table is manually maintained and updated weekly.
+
 </div>
 ## 09 — Screenshots
 
