@@ -39,7 +39,7 @@
 
 > A production-ready recommender fusing **Content-Based Filtering (TF-IDF)**, **Collaborative Filtering (SVD)**, and **NLP Sentiment Analysis (VADER)** with a tunable weighted scoring engine — backed by Supabase PostgreSQL, served via FastAPI, and built to be **dataset-agnostic by design**.
 
-```
+```text
 25,000+ products  ·  Sub-50ms search  ·  3 ML models fused  ·  ~60% faster integration
 ```
 
@@ -49,7 +49,7 @@
 
 The core insight: blend three independent signals, each capturing something the others miss.
 
-```
+```text
 User Reviews (text)           ──→  NLP Engine (VADER Sentiment)    ──┐
 Item Metadata (title/desc)    ──→  Content Vectorization (TF-IDF)  ──┼──→  Weighted Hybrid  ──→  Ranked Results
 User Purchases (clicks/buys)  ──→  Matrix Factorization (SVD)      ──┘         Engine
@@ -115,7 +115,7 @@ Review text analyzed for compound polarity ∈ [-1, 1]. Per-item aggregation →
 
 ## 03 — Tech Stack
 
-```
+```text
 ┌─────────────────┬────────────────────────────────────────────────┐
 │ Layer           │ Technology                                      │
 ├─────────────────┼────────────────────────────────────────────────┤
@@ -135,7 +135,7 @@ Review text analyzed for compound polarity ∈ [-1, 1]. Per-item aggregation →
 
 ## 04 — Project Structure
 
-```
+```text
 hybrid-recommender/
 │
 ├── backend/
@@ -186,13 +186,15 @@ cp .env.example .env
 ```env
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_KEY=your-service-role-key   # Required for bulk import
+SUPABASE_SERVICE_KEY=your-service-role-key
 ```
 
 ```bash
 # 3 — Run SQL migrations
 # See SETUP.md for full schema → paste into Supabase SQL Editor
+```
 
+```bash
 # 4 — Start the server
 python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
@@ -244,82 +246,30 @@ Upload any CSV file, click **Build Models**, then enter an item name or User ID 
 
 ## 06 — API Reference
 
+```http
+GET    /api/config
+GET    /api/status
+GET    /api/search?q=...&limit=20
+POST   /api/upload
+POST   /api/build
+GET    /api/recommend/{title}
+GET    /api/items?page=1&per_page=50
+GET    /api/categories
+GET    /api/weights
+PUT    /api/weights
+GET    /api/purchases/{user_id}
+POST   /api/purchases
 ```
-GET    /api/config                   →  Supabase public config
-GET    /api/status                   →  System status + product count
-GET    /api/search?q=...&limit=20    →  Full-text search (PostgreSQL FTS)
-POST   /api/upload                   →  Upload CSV/JSON dataset
-POST   /api/build                    →  Train TF-IDF, SVD, VADER models
-POST   /api/recommend                →  Dispatch async recommendation task → returns task_id (202)
-GET    /api/task/{task_id}           →  Poll task status (PENDING/STARTED/SUCCESS/FAILURE)
-GET    /api/recommend/{title}        →  Sync recommendations (legacy, backward-compatible)
-GET    /api/items?page=1&per_page=50 →  Paginated product listing
-GET    /api/categories               →  All available categories
-GET    /api/weights                  →  Current α, β, γ blend weights
-PUT    /api/weights                  →  Update blend weights live
-GET    /api/purchases/{user_id}      →  User purchase history
-POST   /api/purchases                →  Record a purchase event
-
-06.1 — API Examples (curl)
-All examples assume the server is running at http://localhost:8000
-
-System Status
-curl http://localhost:8000/api/status
-
-Search Products
-curl "http://localhost:8000/api/search?q=laptop&limit=10"
-
-Paginated Items
-curl "http://localhost:8000/api/items?page=1&per_page=20"
-
-All Categories
-curl http://localhost:8000/api/categories
-
-Get Current Weights
-curl http://localhost:8000/api/weights
-
-Update Hybrid Weights
-curl -X PUT "http://localhost:8000/api/weights" \
-  -H "Content-Type: application/json" \
-  -d '{"alpha": 0.5, "beta": 0.3, "gamma": 0.2}'
-
-Get User Purchases
-curl "http://localhost:8000/api/purchases/user_123"
-
-Record a Purchase
-curl -X POST "http://localhost:8000/api/purchases" \
-  -H "Content-Type: application/json" \
-  -d '{"user_id": "user_123", "item_id": "prod_456"}'
-
-Async Recommendation (Dispatch)
-curl -X POST "http://localhost:8000/api/recommend?item_title=Wireless%20Mouse&top_n=10"
-
-Poll Task Result (replace task_id with actual ID)
-curl "http://localhost:8000/api/task/abc123"
-
-Sync Recommendation (Legacy)
-curl "http://localhost:8000/api/recommend/Laptop"
-
-Upload Dataset
-curl -X POST "http://localhost:8000/api/upload" \
-  -F "file=@/path/to/your/dataset.csv"
-
-Build/Train Models
-curl -X POST http://localhost:8000/api/build
-
-Get Config
-curl http://localhost:8000/api/config
----
 
 ## 07 — Evaluation
 
-```bash
+```python
+# Run evaluation benchmarks
 python evaluation.py
 ```
-
 Benchmarks **Content-Only**, **Collab-Only**, **Sentiment-Only**, and **Hybrid** across:
 
-```
+```text
 Precision@K  —  fraction of relevant items in top-K
 Recall@K     —  fraction of all relevant items retrieved
 NDCG@K       —  ranking quality (discounted cumulative gain)
@@ -329,7 +279,7 @@ NDCG@K       —  ranking quality (discounted cumulative gain)
 
 ## 08 — Security
 
-```
+```text
 ✓  No hardcoded credentials — config served via /api/config
 ✓  .env excluded from git via .gitignore
 ✓  CORS restricted to configured origins
@@ -507,7 +457,7 @@ MIT — see [`LICENSE`](LICENSE)
 
 <div align="center">
 
-```
+```text
 Built by Leona Goel
 B.Tech CSE · Vellore Institute of Technology
 National Finalist · Smart India Hackathon 2025 · Top 8% of 950+ Teams
