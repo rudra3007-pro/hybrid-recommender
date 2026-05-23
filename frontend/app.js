@@ -406,7 +406,9 @@ function renderProducts(products, append) {
             </div>
             <div class="product-card__body">
                 ${p.category ? `<span class="product-card__category">${p.category}</span>` : ''}
-                <h3 class="product-card__title">${p.title || 'Untitled'}</h3>
+                <h3 class="product-card__title" title="${p.title || 'Untitled'}">
+                ${p.title || 'Untitled'}
+                </h3>
                 <p class="product-card__desc">${p.description || 'No description available.'}</p>
                 <div class="product-card__footer">
                     <div class="product-card__rating">
