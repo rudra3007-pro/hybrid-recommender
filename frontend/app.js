@@ -101,6 +101,18 @@ function renderStars(rating) {
     return html;
 }
 
+function formatReviewCount(count) {
+    if (!count || count === 0) {
+        return "No reviews yet";
+    }
+
+    if (count >= 1000) {
+        return `(${(count / 1000).toFixed(1)}k reviews)`;
+    }
+
+    return `(${count} reviews)`;
+}
+
 function sentimentBadge(score) {
     if (score > 0.05) return '<span class="product-card__sentiment sentiment-positive">Positive</span>';
     if (score < -0.05) return '<span class="product-card__sentiment sentiment-negative">Negative</span>';
