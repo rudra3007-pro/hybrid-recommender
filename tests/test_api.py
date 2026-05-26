@@ -26,3 +26,15 @@ def test_categories_endpoint_handles_failures_gracefully(monkeypatch):
     response = client.get("/api/categories")
     assert response.status_code == 200
     assert response.json() == {"categories": []}
+def test_version_endpoint():
+    response = client.get("/api/version")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data == {
+        "version": "3.0",
+        "service": "Hybrid Recommender API",
+        "status": "running",
+    }
