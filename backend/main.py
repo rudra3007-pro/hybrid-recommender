@@ -47,6 +47,7 @@ from src.model.nlp_engine import batch_analyze, aggregate_sentiment_by_item
 from src.model.content_model import ContentRecommender
 from src.model.collaborative_model import CollaborativeRecommender
 from src.model.hybrid_model import HybridRecommender
+from src.model.federated_learning import train_federated_collaborative_model
 
 from functools import lru_cache
 
@@ -121,6 +122,27 @@ def _escape_like_pattern(value: str) -> str:
 def _set_cache_headers(response: Response, status: str) -> None:
     response.headers["Cache-Control"] = CACHE_CONTROL_VALUE
     response.headers["X-Cache"] = status
+
+
+def _validate_upload_bytes(filename: str, ext: str, contents: bytes) -> None:
+    if not contents:
+        raise HTTPException(400, "Uploaded file is empty.")
+    if len(contents) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"Uploaded file exceeds {MAX_UPLOAD_BYTES} bytes.")
+    if b"\x00" in contents[:4096]:
+        raise HTTPException(400, "Uploaded file appears to be binary.")
+
+    sample = contents[:4096].lstrip()
+    lowered_name = filename.lower()
+    if ext == ".json":
+        if not sample.startswith((b"{", b"[")):
+            raise HTTPException(400, "JSON uploads must contain JSON content.")
+    elif ext == ".csv":
+        lowered_sample = sample[:128].lower()
+        if lowered_sample.startswith((b"{", b"[", b"<!doctype", b"<html", b"<?xml")):
+            raise HTTPException(400, "CSV uploads must contain CSV content.")
+        if not lowered_name.endswith(".csv"):
+            raise HTTPException(400, "CSV uploads must use a .csv filename.")
 
 
 def _extract_bearer_token(value: str | None) -> str:
@@ -294,6 +316,15 @@ class RealtimeRecommendationRequest(BaseModel):
     explain: bool = False
 
 
+class FederatedTrainRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    n_factors: int = 20
+    epochs: int = 5
+    lr: float = 0.05
+    reg: float = 0.05
+
+
 # ── Health ────────────────────────────────────────────────────────────
 @app.get("/health")
 @app.get("/api/health")
@@ -433,6 +464,7 @@ def search_items(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ):
+    query = _normalize_search_query(q)
     # ── Rate Limiting ──
     try:
         rate_limit = int(os.environ.get("RATE_LIMIT_SEARCH_PER_MIN", "60"))
@@ -466,7 +498,7 @@ def search_items(
         response.headers["x-ratelimit-remaining"] = str(remaining)
         response.headers["x-ratelimit-reset"] = str(reset_time)
 
-    cache_key = _cache_key("search", q, limit, offset)
+    cache_key = _cache_key("search", query, limit, offset)
     cached = _get_cached_response(cache_key)
     if cached is not None:
         _set_cache_headers(response, "HIT")
@@ -656,6 +688,90 @@ def build_models():
         "message": "Models built successfully!",
         "items": len(item_df),
         "has_collaborative": collab_model is not None,
+        "build_time_seconds": build_time,
+    }
+
+
+@app.post("/api/train/federated")
+def train_federated(req: FederatedTrainRequest):
+    sb = get_supabase()
+    all_products = []
+    page_size = 1000
+    offset = 0
+    while True:
+        result = sb.table('products').select('id, title, description, category, rating, avg_sentiment, review_count').range(offset, offset + page_size - 1).execute()
+        batch = result.data or []
+        all_products.extend(batch)
+        if len(batch) < page_size:
+            break
+        offset += page_size
+    if not all_products:
+        raise HTTPException(400, "No products in database. Upload data first.")
+
+    import pandas as pd
+    item_df = pd.DataFrame(all_products)
+    item_df['combined'] = (
+        item_df['title'].astype(str) + ' ' +
+        item_df['description'].fillna('').astype(str) + ' ' +
+        item_df['category'].fillna('').astype(str)
+    )
+    item_df['review_count'] = item_df['review_count'].fillna(0).astype(int)
+
+    start_time = time.time()
+    content_model = ContentRecommender(item_df)
+
+    try:
+        purchases_result = sb.table('purchases').select('user_id, product_id, rating').limit(50000).execute()
+        purchases = purchases_result.data or []
+    except Exception as e:
+        logger.error("Federated training: purchases load failed: %s", e)
+        raise HTTPException(500, f"Failed to retrieve purchases from database: {str(e)}")
+
+    if len(purchases) <= 10:
+        raise HTTPException(400, "Not enough interaction data for federated training. Need at least 11 interactions.")
+
+    product_title_map = {p['id']: p['title'] for p in all_products}
+    interaction_rows = []
+    for p in purchases:
+        title = product_title_map.get(p['product_id'])
+        if title:
+            interaction_rows.append({'user_id': p['user_id'], 'title': title, 'rating': p.get('rating', 3.0)})
+
+    if len(interaction_rows) <= 10:
+        raise HTTPException(400, "Not enough valid interaction rows matching product catalog.")
+
+    interaction_df = pd.DataFrame(interaction_rows)
+    if interaction_df['user_id'].nunique() <= 1:
+        raise HTTPException(400, "Federated training requires at least 2 unique users.")
+
+    try:
+        collab_model = train_federated_collaborative_model(
+            interaction_df,
+            n_factors=req.n_factors,
+            epochs=req.epochs,
+            lr=req.lr,
+            reg=req.reg
+        )
+    except Exception as e:
+        logger.error("Federated training execution failed: %s", e)
+        raise HTTPException(500, f"Federated training execution failed: {str(e)}")
+
+    hybrid_model = HybridRecommender(content_model, collab_model, item_df)
+    build_time = round(time.time() - start_time, 2)
+
+    models["content"] = content_model
+    models["collab"] = collab_model
+    models["hybrid"] = hybrid_model
+    models["item_df"] = item_df
+    models["ready"] = True
+    models["build_time"] = build_time
+    models["last_trained_at"] = datetime.now(timezone.utc).isoformat()
+    _clear_response_cache()
+
+    return {
+        "message": "Federated collaborative model trained successfully!",
+        "items": len(item_df),
+        "users": int(interaction_df['user_id'].nunique()),
         "build_time_seconds": build_time,
     }
 
