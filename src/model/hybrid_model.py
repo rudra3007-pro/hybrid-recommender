@@ -406,9 +406,7 @@ class HybridRecommender:
         sentiment_scores = self._normalize_scores(sentiment_raws)
 
         kg_scores = []
-        t
         if self.kg_model:
-            l
             kg_recs = self.kg_model.recommend(title, top_n=top_n * 3)
            
             kg_map = {
